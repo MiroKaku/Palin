@@ -1,0 +1,56 @@
+﻿name: Build
+
+on:
+  push:
+    paths-ignore:
+      - '.github/*'
+      - '*.md'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      POWERSHELL_TELEMETRY_OPTOUT: 1
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: microsoft/setup-msbuild@v1
+
+      - name: Clear local NuGet cache (workaround for failed restores on windows-latest)
+        run: dotnet nuget locals all --clear
+
+      - name: Build
+        run: msbuild BuildAllTargets.proj
+
+      - name: Prepare artifacts
+        run: rm Output\Binaries\* -vb -Recurse -Force -Include *.exp, *.idb, *.ilk, *.iobj, *.ipdb, *.lastbuildstate, *.lib, *.obj, *.res, *.tlog
+
+      - name: Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Palin_All_Binaries_GitHubActions
+          path: Output\Binaries
+          if-no-files-found: error
+
+      - name: Pack zip
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: ${{github.workspace}}
+        shell: cmd
+        run: |
+          7z a -tzip Palin-ARM64.zip LICENSE .\Output\Binaries\Release\ARM64\*
+          7z a -tzip Palin-x86.zip   LICENSE .\Output\Binaries\Release\Win32\*
+          7z a -tzip Palin-x64.zip   LICENSE .\Output\Binaries\Release\x64\*
+
+      - name: Publish
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          generate_release_notes: true
+          files: |
+            Palin-ARM64.zip
+            Palin-x86.zip
+            Palin-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
