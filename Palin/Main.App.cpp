@@ -87,17 +87,37 @@ namespace Mi::Palin
     }
 
     winrt::hresult App::StartPlayingFromSharedName(
+        _In_     HWND               Window,
+        _In_     std::wstring_view  Name,
         _In_     DXGI_MODE_ROTATION Mode,
-        _In_     std::wstring_view Name,
-        _In_     bool   IsUseKeyedMutex,
-        _In_opt_ UINT32 AcquireKey,
-        _In_opt_ UINT32 ReleaseKey,
-        _In_opt_ UINT32 Timeout
+        _In_     bool               IsUseKeyedMutex,
+        _In_opt_ UINT32             AcquireKey,
+        _In_opt_ UINT32             ReleaseKey,
+        _In_opt_ UINT32             Timeout
     )
     {
         if (mStarted) {
             return S_FALSE;
         }
+        
+        mTimeout      = Timeout;
+        mAcquireKey   = AcquireKey;
+        mReleaseKey   = ReleaseKey;
+        mRotationMode = Mode;
+        
+        DWORD TargetProcessId = 0;
+        GetWindowThreadProcessId(Window, &TargetProcessId);
+
+        mWatchTarget = decltype(mWatchTarget)(OpenProcess(SYNCHRONIZE  | PROCESS_DUP_HANDLE, FALSE, TargetProcessId), [this](HANDLE Handle) -> void
+        {
+            if (Handle) {
+                CloseHandle(Handle);
+
+                if (mClosedRevoker) {
+                    mClosedRevoker();
+                }
+            }
+        });
 
         const auto Result = mDevice.as<ID3D11Device1>()->OpenSharedResourceByName(
             Name.data(), DXGI_SHARED_RESOURCE_READ, IID_PPV_ARGS(&mSharedTexture));
@@ -109,22 +129,18 @@ namespace Mi::Palin
             (void)mSharedTexture->QueryInterface(IID_PPV_ARGS(&mSharedMutex));
         }
 
-        mTimeout        = Timeout;
-        mAcquireKey     = AcquireKey;
-        mReleaseKey     = ReleaseKey;
-        mRotationMode   = Mode;
-
         return StartPlaying();
     }
 
     winrt::hresult App::StartPlayingFromSharedHandle(
+        _In_     HWND               Window,
+        _In_     HANDLE             Handle,
         _In_     DXGI_MODE_ROTATION Mode,
-        _In_opt_ HANDLE Process,
-        _In_     HANDLE Handle,
-        _In_     bool   IsUseKeyedMutex,
-        _In_opt_ UINT32 AcquireKey,
-        _In_opt_ UINT32 ReleaseKey,
-        _In_opt_ UINT32 Timeout
+        _In_     bool               IsNtHandle,
+        _In_     bool               IsUseKeyedMutex,
+        _In_opt_ UINT32             AcquireKey,
+        _In_opt_ UINT32             ReleaseKey,
+        _In_opt_ UINT32             Timeout
     )
     {
         if (mStarted) {
@@ -132,10 +148,29 @@ namespace Mi::Palin
         }
 
         winrt::hresult Result;
+        
+        mTimeout      = Timeout;
+        mAcquireKey   = AcquireKey;
+        mReleaseKey   = ReleaseKey;
+        mRotationMode = Mode;
 
-        if (Process) {
+        DWORD TargetProcessId = 0;
+        GetWindowThreadProcessId(Window, &TargetProcessId);
+
+        mWatchTarget = decltype(mWatchTarget)(OpenProcess(SYNCHRONIZE  | PROCESS_DUP_HANDLE, FALSE, TargetProcessId), [this](HANDLE Handle) -> void
+        {
+            if (Handle) {
+                CloseHandle(Handle);
+
+                if (mClosedRevoker) {
+                    mClosedRevoker();
+                }
+            }
+        });
+
+        if (IsNtHandle) {
             HANDLE NtHandle = nullptr;
-            if (DuplicateHandle(Process, Handle, GetCurrentProcess(), &NtHandle,
+            if (DuplicateHandle(mWatchTarget.get(), Handle, GetCurrentProcess(), &NtHandle,
                 0, FALSE, DUPLICATE_SAME_ACCESS)) {
 
                 Result = mDevice.as<ID3D11Device1>()->OpenSharedResource1(NtHandle, IID_PPV_ARGS(&mSharedTexture));
@@ -158,11 +193,6 @@ namespace Mi::Palin
             (void)mSharedTexture->QueryInterface(IID_PPV_ARGS(&mSharedMutex));
         }
 
-        mTimeout        = Timeout;
-        mAcquireKey     = AcquireKey;
-        mReleaseKey     = ReleaseKey;
-        mRotationMode   = Mode;
-
         return StartPlaying();
     }
 
@@ -180,8 +210,13 @@ namespace Mi::Palin
             winrt::hresult Result;
 
             while (mStarted) {
-                try {
+                if (WaitForSingleObject(mWatchTarget.get(), 0) == WAIT_OBJECT_0) {
+                    mWatchTarget = nullptr;
 
+                    break;
+                }
+
+                try {
                     winrt::check_hresult(mRender->BeginFrame());
                     {
                         if (mSharedMutex) {
@@ -232,6 +267,11 @@ namespace Mi::Palin
         }
 
         return S_OK;
+    }
+
+    void App::RegisterClosedRevoke(const std::function<void()>& Revoker)
+    {
+        mClosedRevoker = Revoker;
     }
 
     winrt::com_ptr<IDXGISwapChain1> App::GetSwapChain() const

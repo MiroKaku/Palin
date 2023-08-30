@@ -11,9 +11,6 @@ namespace Mi::Palin
         _In_     int        /*ShowCmd*/
     )
     {
-        // works but everything draws small
-        // SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-
         winrt::init_apartment(winrt::apartment_type::single_threaded);
 
         auto App    = std::make_shared<Palin::App>();
