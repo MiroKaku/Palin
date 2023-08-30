@@ -151,7 +151,7 @@ namespace Mi::Palin
         winrt::check_pointer(Controls.CreateControl(Window::ControlType::Label, L"Shared Handle (Hex):"));
         mTxtSharedHandle = winrt::check_pointer(Controls.CreateControl(Window::ControlType::Edit, L""));
 
-        mBtnSwitch = winrt::check_pointer(Controls.CreateControl(Window::ControlType::Button, L"Start", WS_DISABLED,
+        mBtnSwitch = winrt::check_pointer(Controls.CreateControl(Window::ControlType::Button, L"Start", 0,
             -1, -1, -1, 48));
         
         mApp->RegisterClosedRevoke([this]
@@ -272,31 +272,46 @@ namespace Mi::Palin
         if (Sender == mTxtSharedName) {
             if (Edit_GetTextLength(Sender) > 0) {
                 Edit_Enable(mTxtSharedHandle, FALSE);
-                Button_Enable(mBtnSwitch, TRUE);
             }
             else {
                 Edit_Enable(mTxtSharedHandle, TRUE);
-
-                if (Edit_GetTextLength(mTxtSharedHandle) <= 0) {
-                    Button_Enable(mBtnSwitch, FALSE);
-                }
             }
         }
         if (Sender == mTxtSharedHandle) {
             if (Edit_GetTextLength(Sender) > 0) {
                 Edit_Enable(mTxtSharedName, FALSE);
-                Button_Enable(mBtnSwitch, TRUE);
             }
             else {
                 Edit_Enable(mTxtSharedName, TRUE);
-
-                if (Edit_GetTextLength(mTxtSharedName) <= 0) {
-                    Button_Enable(mBtnSwitch, FALSE);
-                }
             }
         }
 
         return 0;
+    }
+
+    HRESULT WINAPI DwmGetDxSharedSurface(
+        _In_ const HWND Window,
+        _Out_opt_ HANDLE* DxSurface,
+        _Out_opt_ LUID* AdapterLuid,
+        _Out_opt_ DXGI_FORMAT* Format,
+        _Out_opt_ ULONG* Flags,
+        _Out_opt_ UINT64* UpdateId
+    )
+    {
+        static decltype(DwmGetDxSharedSurface)* DwmGetDxSharedSurface_ = nullptr;
+
+        if (DwmGetDxSharedSurface_ == nullptr) {
+
+            const auto User32 = GetModuleHandleW(L"user32");
+            DwmGetDxSharedSurface_ = reinterpret_cast<decltype(DwmGetDxSharedSurface_)>(
+                GetProcAddress(User32, "DwmGetDxSharedSurface"));
+
+            if (DwmGetDxSharedSurface_ == nullptr) {
+                return HRESULT_FROM_WIN32(GetLastError());
+            }
+        }
+
+        return DwmGetDxSharedSurface_(Window, DxSurface, AdapterLuid, Format, Flags, UpdateId);
     }
 
     LRESULT MainWindow::Button_Clicked(HWND Sender)
@@ -375,7 +390,7 @@ namespace Mi::Palin
                     }
                 }
 
-                if (IsWindowEnabled(mTxtSharedName)) {
+                if (IsWindowEnabled(mTxtSharedName) && (Edit_GetTextLength(mTxtSharedName) > 0)) {
                     wchar_t SharedName[256]{};
                     if (Edit_GetText(mTxtSharedName, SharedName, _countof(SharedName)) == 0) {
                         MessageBox(mMainWindow, L"Invalid: Shared Name.", TITLE_NAME, MB_OK | MB_ICONERROR);
@@ -395,18 +410,25 @@ namespace Mi::Palin
                     mStarted = true;
                 }
                 else {
-                    auto TargetProcess = std::unique_ptr<std::remove_pointer_t<HANDLE>, decltype(&::CloseHandle)>(
+                    HANDLE SharedHandle  = nullptr;
+                    auto   TargetProcess = std::unique_ptr<std::remove_pointer_t<HANDLE>, decltype(&::CloseHandle)>(
                         nullptr, [](HANDLE Handle) -> BOOL { if (Handle) return ::CloseHandle(Handle); return TRUE; });
 
-                    wchar_t Buffer[64]{};
-                    if (Edit_GetText(mTxtSharedHandle, Buffer, _countof(Buffer)) == 0) {
-                        MessageBox(mMainWindow, L"Invalid: Shared Handle.", TITLE_NAME, MB_OK | MB_ICONERROR);
-                        break;
+                    if (Edit_GetTextLength(mTxtSharedHandle) > 0) {
+                        wchar_t Buffer[64]{};
+                        if (Edit_GetText(mTxtSharedHandle, Buffer, _countof(Buffer)) == 0) {
+                            MessageBox(mMainWindow, L"Invalid: Shared Handle.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                            break;
+                        }
+                        SharedHandle = reinterpret_cast<HANDLE>(static_cast<size_t>(std::stoull(Buffer, nullptr, 16)));
                     }
-                    const auto SharedHandle  = reinterpret_cast<HANDLE>(static_cast<size_t>(std::stoull(Buffer, nullptr, 16)));
-                    const auto IsUseNtHandle = Button_GetCheck(mChkNtHandle);
+                    else {
+                        if (FAILED(DwmGetDxSharedSurface(TargetWindow, &SharedHandle, nullptr, nullptr, nullptr, nullptr))) {
+                            MessageBox(mMainWindow, L"Failed: Get shared handle from window.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                        }
+                    }
 
-                    if (FAILED(mApp->StartPlayingFromSharedHandle(TargetWindow, SharedHandle, Mode, IsUseNtHandle,
+                    if (FAILED(mApp->StartPlayingFromSharedHandle(TargetWindow, SharedHandle, Mode, Button_GetCheck(mChkNtHandle),
                         IsUseKeyedMutex, AcquireKey, ReleaseKey, Timeout))) {
 
                         MessageBox(mMainWindow, L"Failed: Start failed. (2)", TITLE_NAME, MB_OK | MB_ICONERROR);
