@@ -1,4 +1,7 @@
 #include "Main.Window.h"
+#include "Core.Console.h"
+
+#include <conio.h>
 
 
 namespace Mi::Palin
@@ -106,6 +109,9 @@ namespace Mi::Palin
         if (mTxtTimeout) {
             DestroyWindow(mTxtTimeout);
         }
+        if (mBtnLogging) {
+            DestroyWindow(mCboWindows);
+        }
 
         mCboWindows      = nullptr;
         mTxtSharedName   = nullptr;
@@ -117,6 +123,7 @@ namespace Mi::Palin
         mTxtAcquireKey   = nullptr;
         mTxtReleaseKey   = nullptr;
         mTxtTimeout      = nullptr;
+        mBtnLogging      = nullptr;
 
         mBrush           = nullptr;
         mContent         = nullptr;
@@ -194,6 +201,9 @@ namespace Mi::Palin
 
         winrt::check_pointer(Controls.CreateControl(Window::ControlType::Label, L"Timeout:"));
         mTxtTimeout = winrt::check_pointer(Controls.CreateControl(Window::ControlType::Edit, L"-1", WS_DISABLED));
+
+        mBtnLogging = winrt::check_pointer(Controls.CreateControl(Window::ControlType::Button, L"Turn on logging", 0,
+            -1, -1, -1, 48));
     }
 
     LRESULT MainWindow::MessageHandler(
@@ -316,131 +326,161 @@ namespace Mi::Palin
 
     LRESULT MainWindow::Button_Clicked(HWND Sender)
     {
-        if (Sender != mBtnSwitch) {
+        if (Sender == mBtnLogging) {
+            if (mLogging) {
+                mLogging = false;
+                Button_SetText(Sender, L"Turn on logging");
+
+                if (const auto Console = GetConsoleWindow()) {
+                    ShowWindow(Console, SW_HIDE);
+                }
+            }
+            else {
+                mLogging = true;
+                Button_SetText(Sender, L"Turn off logging");
+
+                if (const auto Console = GetConsoleWindow()) {
+                    ShowWindow(Console, SW_SHOW);
+                }
+                else {
+                    Core::RedirectIOToConsole(5000);
+
+                    // Disable 'Close' Button
+                    RemoveMenu(GetSystemMenu(GetConsoleWindow(), FALSE),
+                        SC_CLOSE, 0x0);
+                }
+
+                SetConsoleTitle(L"Mi.Palin - Logging");
+            }
+
             return 0;
         }
 
-        if (mStarted) {
-            if (SUCCEEDED(mApp->StopPlay())) {
-                Button_SetText(Sender, L"Start");
-                mBrush.Surface(nullptr);
+        if (Sender == mBtnSwitch) {
+            if (mStarted) {
+                if (SUCCEEDED(mApp->StopPlay())) {
+                    Button_SetText(Sender, L"Start");
+                    mBrush.Surface(nullptr);
 
-                mStarted = false;
+                    mStarted = false;
+                }
             }
-        }
-        else {
-            do {
-                HWND TargetWindow;
-                DXGI_MODE_ROTATION  Mode;
+            else {
+                do {
+                    HWND TargetWindow;
+                    DXGI_MODE_ROTATION  Mode;
 
-                // Target Window
-                {
-                    const auto Index = ComboBox_GetCurSel(mCboWindows);
-                    if (Index == -1) {
-                        MessageBox(mMainWindow, L"Invalid: 'Windows' no selected.", TITLE_NAME, MB_OK | MB_ICONERROR);
-                        break;
-                    }
-                    TargetWindow = reinterpret_cast<HWND>(ComboBox_GetItemData(
-                        mCboWindows, Index));
-                    if (!IsWindow(TargetWindow)) {
-                        MessageBox(mMainWindow, L"Invalid: Target Window.", TITLE_NAME, MB_OK | MB_ICONERROR);
-                        break;
-                    }
-                }
-
-                // Rotation Mode
-                {
-                    const auto Index = ComboBox_GetCurSel(mCboRotationMode);
-                    if (Index == -1) {
-                        MessageBox(mMainWindow, L"Invalid: 'RotationMode' no selected.", TITLE_NAME, MB_OK | MB_ICONERROR);
-                        break;
-                    }
-                    Mode = static_cast<DXGI_MODE_ROTATION>(ComboBox_GetItemData(
-                        mCboRotationMode, Index));
-                }
-
-                bool IsUseKeyedMutex;
-                UINT32 AcquireKey   = 0;
-                UINT32 ReleaseKey   = 0;
-                UINT32 Timeout      = 0;
-
-                // KeyedMutex
-                {
-                    IsUseKeyedMutex = Button_GetCheck(mChkKeyedMutex);
-                    if (IsUseKeyedMutex) {
-                        wchar_t Buffer[64]{};
-
-                        if (Edit_GetText(mTxtAcquireKey, Buffer, _countof(Buffer)) == 0) {
-                            MessageBox(mMainWindow, L"Invalid: Acquire Key.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                    // Target Window
+                    {
+                        const auto Index = ComboBox_GetCurSel(mCboWindows);
+                        if (Index == -1) {
+                            MessageBox(mMainWindow, L"Invalid: 'Windows' no selected.", TITLE_NAME, MB_OK | MB_ICONERROR);
                             break;
                         }
-                        AcquireKey = std::stoul(Buffer);
-
-                        if (Edit_GetText(mTxtReleaseKey, Buffer, _countof(Buffer)) == 0) {
-                            MessageBox(mMainWindow, L"Invalid: Release Key.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                        TargetWindow = reinterpret_cast<HWND>(ComboBox_GetItemData(
+                            mCboWindows, Index));
+                        if (!IsWindow(TargetWindow)) {
+                            MessageBox(mMainWindow, L"Invalid: Target Window.", TITLE_NAME, MB_OK | MB_ICONERROR);
                             break;
                         }
-                        ReleaseKey = std::stoul(Buffer);
+                    }
 
-                        if (Edit_GetText(mTxtTimeout, Buffer, _countof(Buffer)) == 0) {
-                            MessageBox(mMainWindow, L"Invalid: Timeout value.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                    // Rotation Mode
+                    {
+                        const auto Index = ComboBox_GetCurSel(mCboRotationMode);
+                        if (Index == -1) {
+                            MessageBox(mMainWindow, L"Invalid: 'RotationMode' no selected.", TITLE_NAME, MB_OK | MB_ICONERROR);
                             break;
                         }
-                        Timeout = std::stoul(Buffer);
-                    }
-                }
-
-                if (IsWindowEnabled(mTxtSharedName) && (Edit_GetTextLength(mTxtSharedName) > 0)) {
-                    wchar_t SharedName[256]{};
-                    if (Edit_GetText(mTxtSharedName, SharedName, _countof(SharedName)) == 0) {
-                        MessageBox(mMainWindow, L"Invalid: Shared Name.", TITLE_NAME, MB_OK | MB_ICONERROR);
-                        break;
+                        Mode = static_cast<DXGI_MODE_ROTATION>(ComboBox_GetItemData(
+                            mCboRotationMode, Index));
                     }
 
-                    if (FAILED(mApp->StartPlayingFromSharedName(TargetWindow, SharedName, Mode,
-                        IsUseKeyedMutex, AcquireKey, ReleaseKey, Timeout))) {
+                    bool IsUseKeyedMutex;
+                    UINT32 AcquireKey   = 0;
+                    UINT32 ReleaseKey   = 0;
+                    UINT32 Timeout      = 0;
 
-                        MessageBox(mMainWindow, L"Failed: Start failed. (1)", TITLE_NAME, MB_OK | MB_ICONERROR);
-                        break;
+                    // KeyedMutex
+                    {
+                        IsUseKeyedMutex = Button_GetCheck(mChkKeyedMutex);
+                        if (IsUseKeyedMutex) {
+                            wchar_t Buffer[64]{};
+
+                            if (Edit_GetText(mTxtAcquireKey, Buffer, _countof(Buffer)) == 0) {
+                                MessageBox(mMainWindow, L"Invalid: Acquire Key.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                                break;
+                            }
+                            AcquireKey = std::stoul(Buffer);
+
+                            if (Edit_GetText(mTxtReleaseKey, Buffer, _countof(Buffer)) == 0) {
+                                MessageBox(mMainWindow, L"Invalid: Release Key.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                                break;
+                            }
+                            ReleaseKey = std::stoul(Buffer);
+
+                            if (Edit_GetText(mTxtTimeout, Buffer, _countof(Buffer)) == 0) {
+                                MessageBox(mMainWindow, L"Invalid: Timeout value.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                                break;
+                            }
+                            Timeout = std::stoul(Buffer);
+                        }
                     }
 
-                    Button_SetText(Sender, L"Stop");
-                    mBrush.Surface(CreateCompositionSurfaceForSwapChain(mCompositor, mApp->GetSwapChain().get()));
-
-                    mStarted = true;
-                }
-                else {
-                    HANDLE SharedHandle  = nullptr;
-                    auto   TargetProcess = std::unique_ptr<std::remove_pointer_t<HANDLE>, decltype(&::CloseHandle)>(
-                        nullptr, [](HANDLE Handle) -> BOOL { if (Handle) return ::CloseHandle(Handle); return TRUE; });
-
-                    if (Edit_GetTextLength(mTxtSharedHandle) > 0) {
-                        wchar_t Buffer[64]{};
-                        if (Edit_GetText(mTxtSharedHandle, Buffer, _countof(Buffer)) == 0) {
-                            MessageBox(mMainWindow, L"Invalid: Shared Handle.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                    if (IsWindowEnabled(mTxtSharedName) && (Edit_GetTextLength(mTxtSharedName) > 0)) {
+                        wchar_t SharedName[256]{};
+                        if (Edit_GetText(mTxtSharedName, SharedName, _countof(SharedName)) == 0) {
+                            MessageBox(mMainWindow, L"Invalid: Shared Name.", TITLE_NAME, MB_OK | MB_ICONERROR);
                             break;
                         }
-                        SharedHandle = reinterpret_cast<HANDLE>(static_cast<size_t>(std::stoull(Buffer, nullptr, 16)));
+
+                        if (FAILED(mApp->StartPlayingFromSharedName(TargetWindow, SharedName, Mode,
+                            IsUseKeyedMutex, AcquireKey, ReleaseKey, Timeout))) {
+
+                            MessageBox(mMainWindow, L"Failed: Start failed. (1)", TITLE_NAME, MB_OK | MB_ICONERROR);
+                            break;
+                        }
+
+                        Button_SetText(Sender, L"Stop");
+                        mBrush.Surface(CreateCompositionSurfaceForSwapChain(mCompositor, mApp->GetSwapChain().get()));
+
+                        mStarted = true;
                     }
                     else {
-                        if (FAILED(DwmGetDxSharedSurface(TargetWindow, &SharedHandle, nullptr, nullptr, nullptr, nullptr))) {
-                            MessageBox(mMainWindow, L"Failed: Get shared handle from window.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                        HANDLE SharedHandle  = nullptr;
+                        auto   TargetProcess = std::unique_ptr<std::remove_pointer_t<HANDLE>, decltype(&::CloseHandle)>(
+                            nullptr, [](HANDLE Handle) -> BOOL { if (Handle) return ::CloseHandle(Handle); return TRUE; });
+
+                        if (Edit_GetTextLength(mTxtSharedHandle) > 0) {
+                            wchar_t Buffer[64]{};
+                            if (Edit_GetText(mTxtSharedHandle, Buffer, _countof(Buffer)) == 0) {
+                                MessageBox(mMainWindow, L"Invalid: Shared Handle.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                                break;
+                            }
+                            SharedHandle = reinterpret_cast<HANDLE>(static_cast<size_t>(std::stoull(Buffer, nullptr, 16)));
                         }
+                        else {
+                            if (FAILED(DwmGetDxSharedSurface(TargetWindow, &SharedHandle, nullptr, nullptr, nullptr, nullptr))) {
+                                MessageBox(mMainWindow, L"Failed: Get shared handle from window.", TITLE_NAME, MB_OK | MB_ICONERROR);
+                            }
+                        }
+
+                        if (FAILED(mApp->StartPlayingFromSharedHandle(TargetWindow, SharedHandle, Mode, Button_GetCheck(mChkNtHandle),
+                            IsUseKeyedMutex, AcquireKey, ReleaseKey, Timeout))) {
+
+                            MessageBox(mMainWindow, L"Failed: Start failed. (2)", TITLE_NAME, MB_OK | MB_ICONERROR);
+                            break;
+                        }
+
+                        Button_SetText(Sender, L"Stop");
+                        mBrush.Surface(CreateCompositionSurfaceForSwapChain(mCompositor, mApp->GetSwapChain().get()));
+
+                        mStarted = true;
                     }
+                } while (false);
+            }
 
-                    if (FAILED(mApp->StartPlayingFromSharedHandle(TargetWindow, SharedHandle, Mode, Button_GetCheck(mChkNtHandle),
-                        IsUseKeyedMutex, AcquireKey, ReleaseKey, Timeout))) {
-
-                        MessageBox(mMainWindow, L"Failed: Start failed. (2)", TITLE_NAME, MB_OK | MB_ICONERROR);
-                        break;
-                    }
-
-                    Button_SetText(Sender, L"Stop");
-                    mBrush.Surface(CreateCompositionSurfaceForSwapChain(mCompositor, mApp->GetSwapChain().get()));
-
-                    mStarted = true;
-                }
-            } while (false);
+            return 0;
         }
 
         return 0;

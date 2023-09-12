@@ -23,8 +23,10 @@ namespace Mi::Palin
         HWND mTxtAcquireKey     = nullptr;
         HWND mTxtReleaseKey     = nullptr;
         HWND mTxtTimeout        = nullptr;
+        HWND mBtnLogging        = nullptr;
 
         bool mStarted           = false;
+        bool mLogging           = false;
         std::unique_ptr<Core::WindowList> mWindowList;
 
         // Compositions

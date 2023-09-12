@@ -13,8 +13,8 @@ namespace Mi::Palin
     {
         winrt::init_apartment(winrt::apartment_type::single_threaded);
 
-        auto App    = std::make_shared<Palin::App>();
-        auto Window = MainWindow(App);
+        const auto App    = std::make_shared<Palin::App>();
+        auto       Window = MainWindow(App);
 
         try {
             Window.Create (1280, 720);

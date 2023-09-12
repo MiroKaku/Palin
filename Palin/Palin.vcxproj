@@ -34,6 +34,7 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Core.Console.h" />
     <ClInclude Include="Core.GraphicsRender.h" />
     <ClInclude Include="Core.WindowList.h" />
     <ClInclude Include="Interop.Composition.h" />
@@ -45,6 +46,7 @@
     <ClInclude Include="Window.StackPanel.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Core.Console.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>

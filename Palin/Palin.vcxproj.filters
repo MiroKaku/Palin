@@ -12,6 +12,7 @@
     <ClCompile Include="Main.Window.cpp" />
     <ClCompile Include="Window.DesktopWindow.cpp" />
     <ClCompile Include="Window.StackPanel.cpp" />
+    <ClCompile Include="Core.Console.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core.GraphicsRender.h" />
@@ -23,6 +24,7 @@
     <ClInclude Include="pch.h" />
     <ClInclude Include="Window.DesktopWindow.h" />
     <ClInclude Include="Window.StackPanel.h" />
+    <ClInclude Include="Core.Console.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.md" />
