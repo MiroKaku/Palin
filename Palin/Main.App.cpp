@@ -200,7 +200,7 @@ namespace Mi::Palin
     {
         D3D11_TEXTURE2D_DESC TextureDesc{};
         mSharedTexture->GetDesc(&TextureDesc);
-        winrt::hresult Result = mRender->Resize(TextureDesc.Width, TextureDesc.Height, TextureDesc.Format);
+        winrt::hresult Result = mRender->Resize(TextureDesc.Width, TextureDesc.Height, DXGI_FORMAT_B8G8R8A8_UNORM);
         if (FAILED(Result)) {
             return Result;
         }
