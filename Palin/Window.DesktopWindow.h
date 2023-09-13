@@ -41,7 +41,8 @@ namespace Mi::Window
             _In_ INT Y,
             _In_ INT Width,
             _In_ INT Height,
-            _In_ INT CmdShow
+            _In_ INT CmdShow,
+            _In_ COLORREF Background // GetSysColor(COLOR_WINDOW)
         );
     };
 

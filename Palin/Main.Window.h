@@ -9,8 +9,9 @@ namespace Mi::Palin
 {
     class MainWindow final : public Window::DesktopWindow
     {
-        static constexpr wchar_t CLASS_NAME[] = L"Mi.Palin.Class";
-        static constexpr wchar_t TITLE_NAME[] = L"Palin - DirectX Shared Texture Player";
+        static constexpr wchar_t  CLASS_NAME[] = L"Mi.Palin.Class";
+        static constexpr wchar_t  TITLE_NAME[] = L"Mi.Palin - DirectX Shared Texture Player";
+        static constexpr COLORREF WINDOW_BACKGROUND = RGB(0xEF, 0xE4, 0xB0); // #EFE4B0
 
         // Controls
         HWND mCboWindows        = nullptr;

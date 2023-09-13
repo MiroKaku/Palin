@@ -1,8 +1,6 @@
 #include "Main.Window.h"
 #include "Core.Console.h"
 
-#include <conio.h>
-
 
 namespace Mi::Palin
 {
@@ -27,6 +25,14 @@ namespace Mi::Palin
     MainWindow::MainWindow(const std::shared_ptr<App>& App)
         : mApp(App)
     {
+        Core::RedirectIOToConsole(5000);
+        if (const auto Console = GetConsoleWindow()) {
+            ShowWindow(Console, SW_HIDE);
+            // Title
+            SetConsoleTitle(L"Mi.Palin - Logging");
+            // Disable 'Close' Button
+            RemoveMenu(GetSystemMenu(GetConsoleWindow(), FALSE), SC_CLOSE, 0x0);
+        }
     }
 
     void MainWindow::Create(int Width, int Height)
@@ -35,7 +41,7 @@ namespace Mi::Palin
         mDispatcherQueueController = CreateDispatcherQueueController(
             DQTYPE_THREAD_CURRENT, DQTAT_COM_NONE);
 
-        CreateMainWindow(CLASS_NAME, TITLE_NAME, CW_USEDEFAULT, 0, Width, Height, SW_SHOW);
+        CreateMainWindow(CLASS_NAME, TITLE_NAME, CW_USEDEFAULT, 0, Width, Height, SW_SHOW, WINDOW_BACKGROUND);
         CreateControls();
 
         /* Compositor */
@@ -223,13 +229,12 @@ namespace Mi::Palin
 
         if (Message == WM_COMMAND) {
             if (const auto Sender = GET_WM_COMMAND_HWND(WParam, LParam)) {
-                return CommandHandler(Sender,
-                    GET_WM_COMMAND_CMD(WParam, LParam), GET_WM_COMMAND_ID(WParam, LParam));
+                return CommandHandler(Sender,GET_WM_COMMAND_CMD(WParam, LParam), GET_WM_COMMAND_ID(WParam, LParam));
             }
         }
 
         if (Message == WM_CTLCOLORSTATIC) {
-            return Window::StaticControlColorMessageHandler(RGB(0xEF, 0xE4, 0xB0), WParam, LParam);
+            return Window::StaticControlColorMessageHandler(WINDOW_BACKGROUND, WParam, LParam);
         }
 
         return DesktopWindow::MessageHandler(Message, WParam, LParam);
@@ -342,15 +347,6 @@ namespace Mi::Palin
                 if (const auto Console = GetConsoleWindow()) {
                     ShowWindow(Console, SW_SHOW);
                 }
-                else {
-                    Core::RedirectIOToConsole(5000);
-
-                    // Disable 'Close' Button
-                    RemoveMenu(GetSystemMenu(GetConsoleWindow(), FALSE),
-                        SC_CLOSE, 0x0);
-                }
-
-                SetConsoleTitle(L"Mi.Palin - Logging");
             }
 
             return 0;
@@ -457,7 +453,13 @@ namespace Mi::Palin
                                 MessageBox(mMainWindow, L"Invalid: Shared Handle.", TITLE_NAME, MB_OK | MB_ICONERROR);
                                 break;
                             }
-                            SharedHandle = reinterpret_cast<HANDLE>(static_cast<size_t>(std::stoull(Buffer, nullptr, 16)));
+
+                            if (Buffer[0] == L'0' && (Buffer[1] == L'x' || Buffer[1] == L'X')) {
+                                SharedHandle = reinterpret_cast<HANDLE>(static_cast<size_t>(std::stoull(&Buffer[2], nullptr, 16)));
+                            }
+                            else {
+                                SharedHandle = reinterpret_cast<HANDLE>(static_cast<size_t>(std::stoull(&Buffer[0], nullptr, 16)));
+                            }
                         }
                         else {
                             if (FAILED(DwmGetDxSharedSurface(TargetWindow, &SharedHandle, nullptr, nullptr, nullptr, nullptr))) {

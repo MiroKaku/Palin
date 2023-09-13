@@ -99,6 +99,15 @@ namespace Mi::Palin
         if (mStarted) {
             return S_FALSE;
         }
+
+        LOG(INFO, "StartPlaying:");
+        LOG(INFO, "\t Window     : 0x%p", Window);
+        LOG(INFO, "\t Name       : %ls ", Name.data());
+        LOG(INFO, "\t Mode       : %u  ", Mode);
+        LOG(INFO, "\t KeyedMutex : %u  ", IsUseKeyedMutex);
+        LOG(INFO, "\t AcquireKey : %u  ", AcquireKey);
+        LOG(INFO, "\t ReleaseKey : %u  ", ReleaseKey);
+        LOG(INFO, "\t Timeout    : %d  ", (int)Timeout);
         
         mTimeout      = Timeout;
         mAcquireKey   = AcquireKey;
@@ -122,6 +131,7 @@ namespace Mi::Palin
         const auto Result = mDevice.as<ID3D11Device1>()->OpenSharedResourceByName(
             Name.data(), DXGI_SHARED_RESOURCE_READ, IID_PPV_ARGS(&mSharedTexture));
         if (FAILED(Result)) {
+            LOG(ERROR, "App::StartPlaying, OpenSharedResourceByName() failed, Result=0x%0*X", 8, Result);
             return Result;
         }
 
@@ -147,8 +157,18 @@ namespace Mi::Palin
             return S_FALSE;
         }
 
+        LOG(INFO, "StartPlaying:");
+        LOG(INFO, "\t Window     : 0x%p", Window);
+        LOG(INFO, "\t Name       : 0x%p", Handle);
+        LOG(INFO, "\t Mode       : %u  ", Mode);
+        LOG(INFO, "\t NtHandle   : %u  ", IsNtHandle);
+        LOG(INFO, "\t KeyedMutex : %u  ", IsUseKeyedMutex);
+        LOG(INFO, "\t AcquireKey : %u  ", AcquireKey);
+        LOG(INFO, "\t ReleaseKey : %u  ", ReleaseKey);
+        LOG(INFO, "\t Timeout    : %d  ", (int)Timeout);
+
         winrt::hresult Result;
-        
+
         mTimeout      = Timeout;
         mAcquireKey   = AcquireKey;
         mReleaseKey   = ReleaseKey;
@@ -179,6 +199,10 @@ namespace Mi::Palin
             }
             else {
                 Result = HRESULT_FROM_WIN32(GetLastError());
+                LOG(ERROR, "App::StartPlaying, DuplicateHandle() %u.0x%p -> %u.? failed, Result=0x%0*X",
+                    TargetProcessId, Handle, GetCurrentProcessId(), 8, Result.value);
+
+                return Result;
             }
         }
         else {
@@ -186,6 +210,7 @@ namespace Mi::Palin
         }
 
         if (FAILED(Result)) {
+            LOG(ERROR, "App::StartPlaying, OpenSharedResource(%u) failed, Result=0x%0*X", IsNtHandle , 8, Result.value);
             return Result;
         }
 
@@ -202,17 +227,21 @@ namespace Mi::Palin
         mSharedTexture->GetDesc(&TextureDesc);
         winrt::hresult Result = mRender->Resize(TextureDesc.Width, TextureDesc.Height, DXGI_FORMAT_B8G8R8A8_UNORM);
         if (FAILED(Result)) {
+            LOG(ERROR, "App::StartPlaying, GraphicsRender::Resize(%ux%u, %d) failed, Result=0x%0*X",
+                TextureDesc.Width, TextureDesc.Height, DXGI_FORMAT_B8G8R8A8_UNORM, 8, Result.value);
             return Result;
         }
 
         static const auto RenderThread = [this]
         {
-            winrt::hresult Result;
+            LOG(INFO, "App::RenderThread() startup.");
 
+            winrt::hresult Result;
             while (mStarted) {
                 if (WaitForSingleObject(mWatchTarget.get(), 0) == WAIT_OBJECT_0) {
                     mWatchTarget = nullptr;
 
+                    LOG(INFO, "App::RenderThread() The target has exited.");
                     break;
                 }
 
@@ -225,7 +254,7 @@ namespace Mi::Palin
                                 winrt::check_hresult(mRender->Draw(mSharedTexture.get(),
                                     nullptr, false, {}, mRotationMode));
 
-                                mSharedMutex->ReleaseSync(mReleaseKey);
+                                (void)mSharedMutex->ReleaseSync(mReleaseKey);
                             }
                         }
                         else {
@@ -238,8 +267,11 @@ namespace Mi::Palin
                 } catch (const winrt::hresult_error& Exception) {
                     std::this_thread::yield();
                     Result = Exception.code();
+                    LOG(ERROR, "App::RenderThread() has unhandled exception, Result=0x%0*X", 8, Result.value);
                 }
             }
+
+            LOG(INFO, "App::RenderThread() quit.");
         };
 
         try {
@@ -248,6 +280,7 @@ namespace Mi::Palin
         }
         catch (const std::system_error& Exception) {
             Result = HRESULT_FROM_WIN32(Exception.code().value());
+            LOG(ERROR, "App::RenderThread() startup failed., Result=0x%0*X", 8, Result.value);
         }
 
         return Result;

@@ -76,13 +76,14 @@ namespace Mi::Window
     }
 
     void DesktopWindow::CreateMainWindow(
-        _In_ const LPCWSTR ClassName,
-        _In_ const LPCWSTR TitleName,
-        _In_ const INT X,
-        _In_ const INT Y,
-        _In_ const INT Width,
-        _In_ const INT Height,
-        _In_ const INT CmdShow
+        _In_ const LPCWSTR  ClassName,
+        _In_ const LPCWSTR  TitleName,
+        _In_ const INT      X,
+        _In_ const INT      Y,
+        _In_ const INT      Width,
+        _In_ const INT      Height,
+        _In_ const INT      CmdShow,
+        _In_ const COLORREF Background
     )
     {
         /* Legacy window */
@@ -91,7 +92,7 @@ namespace Mi::Window
         WindowClassDesc.hIcon         = LoadIconW  (nullptr, reinterpret_cast<LPCWSTR>(IDI_APPLICATION));
         WindowClassDesc.hIconSm       = LoadIconW  (nullptr, reinterpret_cast<LPCWSTR>(IDI_APPLICATION));
         WindowClassDesc.hCursor       = LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_ARROW));
-        WindowClassDesc.hbrBackground = CreateSolidBrush(RGB(0xEF, 0xE4, 0xB0)); // #EFE4B0
+        WindowClassDesc.hbrBackground = CreateSolidBrush(Background);
         WindowClassDesc.hInstance     = HINST_THISCOMPONENT;
         WindowClassDesc.lpszClassName = ClassName;
         WindowClassDesc.style         = CS_HREDRAW | CS_VREDRAW;

@@ -47,3 +47,13 @@
 // Global Data
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define HINST_THISCOMPONENT ((HINSTANCE)&__ImageBase)
+
+#define LOG_ERROR 0
+#define LOG_INFO  1
+#define LOG(Tag, fmt, ...) \
+    if constexpr (LOG_##Tag == LOG_ERROR){ \
+        fprintf(stderr, "[Mi.Palin][!] " fmt "\n", ## __VA_ARGS__); \
+    } \
+    else if constexpr(LOG_##Tag == LOG_INFO) { \
+        fprintf(stdout, "[Mi.Palin][+] " fmt "\n", ## __VA_ARGS__); \
+    }
