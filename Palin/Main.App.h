@@ -2,6 +2,7 @@
 #include "Window.StackPanel.h"
 #include "Window.DesktopWindow.h"
 #include "Core.GraphicsRender.h"
+#include "Core.GraphicsCapture.h"
 #include "Core.WindowList.h"
 
 
@@ -9,20 +10,22 @@ namespace Mi::Palin
 {
     class App final
     {
+        winrt::com_ptr<ID3D11Device>    mDevice { nullptr };
+        winrt::com_ptr<ID3D11Texture2D> mSurface{ nullptr };
+        winrt::com_ptr<IDXGIKeyedMutex> mSurfaceMutex{ nullptr };
+
         std::thread mRenderThread;
-        std::unique_ptr<Core::GraphicsRender>   mRender       { nullptr };
-        winrt::com_ptr<ID3D11Device>            mDevice       { nullptr };
-        winrt::com_ptr<ID3D11Texture2D>         mSharedTexture{ nullptr };
-        winrt::com_ptr<IDXGIKeyedMutex>         mSharedMutex  { nullptr };
+        std::unique_ptr<Core::GraphicsRender> mRender{ nullptr };
+        std::unique_ptr<Core::GraphicsCaptureForTexture> mCaptureForTexture;
+        std::unique_ptr<Core::GraphicsCaptureForWindow>  mCaptureForWindow;
 
         UINT32 mAcquireKey = 1;
         UINT32 mReleaseKey = 0;
         UINT32 mTimeout    = INFINITE;
         DXGI_MODE_ROTATION mRotationMode = DXGI_MODE_ROTATION_IDENTITY;
 
-        std::atomic_bool        mStarted       = false;
-        std::function<void()>   mClosedRevoker = nullptr;
-        std::unique_ptr<std::remove_pointer_t<HANDLE>, std::function<void(HANDLE)>> mWatchTarget;
+        std::atomic_bool mStarted = false;
+        std::function<void()> mClosedRevoker = nullptr;
 
     public:
         ~App();
@@ -35,35 +38,20 @@ namespace Mi::Palin
 
         void Close();
 
-        winrt::hresult StartPlayingFromSharedName(
-            _In_     HWND               Window,
-            _In_     std::wstring_view  Name,
-            _In_     DXGI_MODE_ROTATION Mode,
-            _In_     bool               IsUseKeyedMutex,
-            _In_opt_ UINT32             AcquireKey = 0,
-            _In_opt_ UINT32             ReleaseKey = 0,
-            _In_opt_ UINT32             Timeout    = 0
-        );
-
-        winrt::hresult StartPlayingFromSharedHandle(
-            _In_     HWND               Window,
-            _In_     HANDLE             Handle,
-            _In_     DXGI_MODE_ROTATION Mode,
-            _In_     bool               IsNtHandle,
-            _In_     bool               IsUseKeyedMutex,
-            _In_opt_ UINT32             AcquireKey = 0,
-            _In_opt_ UINT32             ReleaseKey = 0,
-            _In_opt_ UINT32             Timeout    = 0
-        );
-
-        winrt::hresult StopPlay();
-
-        void RegisterClosedRevoke(const std::function<void()>& Revoker);
-
         [[nodiscard]] winrt::com_ptr<IDXGISwapChain1> GetSwapChain() const;
 
+        void SetKeyedMutex  (_In_ bool Enable, _In_ UINT32 AcquireKey, _In_ UINT32 ReleaseKey, _In_ UINT32 Timeout);
+        void SetRotationMode(_In_ DXGI_MODE_ROTATION Mode);
+
+        winrt::hresult StartPlay(_In_ HWND Window);
+        winrt::hresult StartPlay(_In_ HWND Window, _In_ LPCWSTR Name);
+        winrt::hresult StartPlay(_In_ HWND Window, _In_ HANDLE Handle, _In_ bool NtHandle);
+        winrt::hresult StopPlay();
+
+        void RegisterClosedRevoker(const std::function<void()>& Revoker);
+
     private:
-        winrt::hresult StartPlaying();
+        winrt::hresult StartRenderThread();
     };
 
 }

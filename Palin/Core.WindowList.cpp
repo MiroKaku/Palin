@@ -135,7 +135,7 @@ namespace Mi::Core
     {
         auto Guard = std::unique_lock(mMutex);
 
-        if (!mWindows.count(Window)) {
+        if (!mWindows.contains(Window)) {
             mWindows.emplace(Window);
 
             for (auto& ComboBox : mComboBoxes) {
@@ -152,7 +152,7 @@ namespace Mi::Core
     {
         auto Guard = std::unique_lock(mMutex);
 
-        if (mWindows.count(Window)) {
+        if (mWindows.contains(Window)) {
             mWindows.erase(Window);
 
             for (auto& ComboBox : mComboBoxes) {

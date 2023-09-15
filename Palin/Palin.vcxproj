@@ -35,6 +35,9 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Core.Console.h" />
+    <ClInclude Include="Core.GraphicsCapture.h" />
+    <ClInclude Include="Core.GraphicsCapture.Texture.h" />
+    <ClInclude Include="Core.GraphicsCapture.Window.h" />
     <ClInclude Include="Core.GraphicsRender.h" />
     <ClInclude Include="Core.WindowList.h" />
     <ClInclude Include="Interop.Composition.h" />
@@ -47,6 +50,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core.Console.cpp" />
+    <ClCompile Include="Core.GraphicsCapture.Texture.cpp" />
+    <ClCompile Include="Core.GraphicsCapture.Window.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>

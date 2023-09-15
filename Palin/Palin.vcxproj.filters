@@ -13,6 +13,8 @@
     <ClCompile Include="Window.DesktopWindow.cpp" />
     <ClCompile Include="Window.StackPanel.cpp" />
     <ClCompile Include="Core.Console.cpp" />
+    <ClCompile Include="Core.GraphicsCapture.Texture.cpp" />
+    <ClCompile Include="Core.GraphicsCapture.Window.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core.GraphicsRender.h" />
@@ -25,6 +27,9 @@
     <ClInclude Include="Window.DesktopWindow.h" />
     <ClInclude Include="Window.StackPanel.h" />
     <ClInclude Include="Core.Console.h" />
+    <ClInclude Include="Core.GraphicsCapture.Texture.h" />
+    <ClInclude Include="Core.GraphicsCapture.Window.h" />
+    <ClInclude Include="Core.GraphicsCapture.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.md" />

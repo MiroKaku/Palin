@@ -47,7 +47,7 @@ namespace Mi::Palin
 
         const winrt::Windows::Graphics::SizeInt32 WindowSize
         {
-            WindowRect.right - WindowRect.left,
+            WindowRect.right  - WindowRect.left,
             WindowRect.bottom - WindowRect.top
         };
 
@@ -75,156 +75,93 @@ namespace Mi::Palin
         winrt::check_hresult(Factory->CreateSwapChainForComposition(
             mDevice.get(), &SwapChainDesc, nullptr, SwapChain.put()));
 
-        mRender = std::make_unique<Core::GraphicsRender>(SwapChain);
+        mRender            = std::make_unique<Core::GraphicsRender>(SwapChain);
+        mCaptureForTexture = std::make_unique<Core::GraphicsCaptureForTexture>(mDevice, DXGI_FORMAT_B8G8R8A8_UNORM);
+        mCaptureForWindow  = std::make_unique<Core::GraphicsCaptureForWindow >(mDevice, DXGI_FORMAT_B8G8R8A8_UNORM);
     }
 
     void App::Close()
     {
         StopPlay();
 
-        mRender = nullptr;
-        mDevice = nullptr;
+        mCaptureForTexture = nullptr;
+        mCaptureForWindow  = nullptr;
+        mRender            = nullptr;
+        mDevice            = nullptr;
     }
 
-    winrt::hresult App::StartPlayingFromSharedName(
-        _In_     HWND               Window,
-        _In_     std::wstring_view  Name,
-        _In_     DXGI_MODE_ROTATION Mode,
-        _In_     bool               IsUseKeyedMutex,
-        _In_opt_ UINT32             AcquireKey,
-        _In_opt_ UINT32             ReleaseKey,
-        _In_opt_ UINT32             Timeout
-    )
+    winrt::com_ptr<IDXGISwapChain1> App::GetSwapChain() const
     {
-        if (mStarted) {
-            return S_FALSE;
+        if (mRender) {
+            return mRender->GetSwapChain();
         }
-
-        LOG(INFO, "StartPlaying:");
-        LOG(INFO, "\t Window     : 0x%p", Window);
-        LOG(INFO, "\t Name       : %ls ", Name.data());
-        LOG(INFO, "\t Mode       : %u  ", Mode);
-        LOG(INFO, "\t KeyedMutex : %u  ", IsUseKeyedMutex);
-        LOG(INFO, "\t AcquireKey : %u  ", AcquireKey);
-        LOG(INFO, "\t ReleaseKey : %u  ", ReleaseKey);
-        LOG(INFO, "\t Timeout    : %d  ", (int)Timeout);
-        
-        mTimeout      = Timeout;
-        mAcquireKey   = AcquireKey;
-        mReleaseKey   = ReleaseKey;
-        mRotationMode = Mode;
-        
-        DWORD TargetProcessId = 0;
-        GetWindowThreadProcessId(Window, &TargetProcessId);
-
-        mWatchTarget = decltype(mWatchTarget)(OpenProcess(SYNCHRONIZE  | PROCESS_DUP_HANDLE, FALSE, TargetProcessId), [this](HANDLE Handle) -> void
-        {
-            if (Handle) {
-                CloseHandle(Handle);
-
-                if (mClosedRevoker) {
-                    mClosedRevoker();
-                }
-            }
-        });
-
-        const auto Result = mDevice.as<ID3D11Device1>()->OpenSharedResourceByName(
-            Name.data(), DXGI_SHARED_RESOURCE_READ, IID_PPV_ARGS(&mSharedTexture));
-        if (FAILED(Result)) {
-            LOG(ERROR, "App::StartPlaying, OpenSharedResourceByName() failed, Result=0x%0*X", 8, Result);
-            return Result;
-        }
-
-        if (IsUseKeyedMutex) {
-            (void)mSharedTexture->QueryInterface(IID_PPV_ARGS(&mSharedMutex));
-        }
-
-        return StartPlaying();
+        return { nullptr };
     }
 
-    winrt::hresult App::StartPlayingFromSharedHandle(
-        _In_     HWND               Window,
-        _In_     HANDLE             Handle,
-        _In_     DXGI_MODE_ROTATION Mode,
-        _In_     bool               IsNtHandle,
-        _In_     bool               IsUseKeyedMutex,
-        _In_opt_ UINT32             AcquireKey,
-        _In_opt_ UINT32             ReleaseKey,
-        _In_opt_ UINT32             Timeout
-    )
+    void App::SetKeyedMutex(_In_ bool Enable, _In_ UINT32 AcquireKey, _In_ UINT32 ReleaseKey, _In_ UINT32 Timeout)
     {
-        if (mStarted) {
-            return S_FALSE;
-        }
+        mAcquireKey = AcquireKey;
+        mReleaseKey = ReleaseKey;
+        mTimeout    = Timeout;
 
-        LOG(INFO, "StartPlaying:");
-        LOG(INFO, "\t Window     : 0x%p", Window);
-        LOG(INFO, "\t Name       : 0x%p", Handle);
-        LOG(INFO, "\t Mode       : %u  ", Mode);
-        LOG(INFO, "\t NtHandle   : %u  ", IsNtHandle);
-        LOG(INFO, "\t KeyedMutex : %u  ", IsUseKeyedMutex);
-        LOG(INFO, "\t AcquireKey : %u  ", AcquireKey);
-        LOG(INFO, "\t ReleaseKey : %u  ", ReleaseKey);
-        LOG(INFO, "\t Timeout    : %d  ", (int)Timeout);
-
-        winrt::hresult Result;
-
-        mTimeout      = Timeout;
-        mAcquireKey   = AcquireKey;
-        mReleaseKey   = ReleaseKey;
-        mRotationMode = Mode;
-
-        DWORD TargetProcessId = 0;
-        GetWindowThreadProcessId(Window, &TargetProcessId);
-
-        mWatchTarget = decltype(mWatchTarget)(OpenProcess(SYNCHRONIZE  | PROCESS_DUP_HANDLE, FALSE, TargetProcessId), [this](HANDLE Handle) -> void
-        {
-            if (Handle) {
-                CloseHandle(Handle);
-
-                if (mClosedRevoker) {
-                    mClosedRevoker();
-                }
-            }
-        });
-
-        if (IsNtHandle) {
-            HANDLE NtHandle = nullptr;
-            if (DuplicateHandle(mWatchTarget.get(), Handle, GetCurrentProcess(), &NtHandle,
-                0, FALSE, DUPLICATE_SAME_ACCESS)) {
-
-                Result = mDevice.as<ID3D11Device1>()->OpenSharedResource1(NtHandle, IID_PPV_ARGS(&mSharedTexture));
-
-                CloseHandle(NtHandle);
-            }
-            else {
-                Result = HRESULT_FROM_WIN32(GetLastError());
-                LOG(ERROR, "App::StartPlaying, DuplicateHandle() %u.0x%p -> %u.? failed, Result=0x%0*X",
-                    TargetProcessId, Handle, GetCurrentProcessId(), 8, Result.value);
-
-                return Result;
+        if (Enable) {
+            if (mSurface) {
+                (void)mSurface->QueryInterface(IID_PPV_ARGS(&mSurfaceMutex));
             }
         }
         else {
-            Result = mDevice.as<ID3D11Device1>()->OpenSharedResource(Handle, IID_PPV_ARGS(&mSharedTexture));
+            mSurfaceMutex = nullptr;
         }
-
-        if (FAILED(Result)) {
-            LOG(ERROR, "App::StartPlaying, OpenSharedResource(%u) failed, Result=0x%0*X", IsNtHandle , 8, Result.value);
-            return Result;
-        }
-
-        if (IsUseKeyedMutex) {
-            (void)mSharedTexture->QueryInterface(IID_PPV_ARGS(&mSharedMutex));
-        }
-
-        return StartPlaying();
     }
 
-    winrt::hresult App::StartPlaying()
+    void App::SetRotationMode(_In_ DXGI_MODE_ROTATION Mode)
+    {
+        mRotationMode = Mode;
+    }
+
+    winrt::hresult App::StartPlay(_In_ HWND Window)
+    {
+        mCaptureForWindow->SubscribeClosedEvent([this](HWND) { if (mClosedRevoker) mClosedRevoker(); });
+
+        const auto Result = mCaptureForWindow->StartCapture(Window);
+        if (FAILED(Result)) {
+            return Result;
+        }
+        mSurface = mCaptureForWindow->GetSurface();
+
+        return StartRenderThread();
+    }
+
+    winrt::hresult App::StartPlay(_In_ HWND Window, _In_ LPCWSTR Name)
+    {
+        mCaptureForTexture->SubscribeClosedEvent([this](HWND) { if (mClosedRevoker) mClosedRevoker(); });
+
+        const auto Result = mCaptureForTexture->StartCapture(Window, Name);
+        if (FAILED(Result)) {
+            return Result;
+        }
+        mSurface = mCaptureForWindow->GetSurface();
+
+        return StartRenderThread();
+    }
+
+    winrt::hresult App::StartPlay(_In_ HWND Window, _In_ HANDLE Handle, _In_ bool NtHandle)
+    {
+        mCaptureForTexture->SubscribeClosedEvent([this](HWND) { if (mClosedRevoker) mClosedRevoker(); });
+
+        const auto Result = mCaptureForTexture->StartCapture(Window, Handle, NtHandle);
+        if (FAILED(Result)) {
+            return Result;
+        }
+        mSurface = mCaptureForWindow->GetSurface();
+
+        return StartRenderThread();
+    }
+
+    winrt::hresult App::StartRenderThread()
     {
         D3D11_TEXTURE2D_DESC TextureDesc{};
-        mSharedTexture->GetDesc(&TextureDesc);
+        mSurface->GetDesc(&TextureDesc);
         winrt::hresult Result = mRender->Resize(TextureDesc.Width, TextureDesc.Height, DXGI_FORMAT_B8G8R8A8_UNORM);
         if (FAILED(Result)) {
             LOG(ERROR, "App::StartPlaying, GraphicsRender::Resize(%ux%u, %d) failed, Result=0x%0*X",
@@ -232,33 +169,28 @@ namespace Mi::Palin
             return Result;
         }
 
+        // TODO: Fix WGC
+
         static const auto RenderThread = [this]
         {
             LOG(INFO, "App::RenderThread() startup.");
 
             winrt::hresult Result;
             while (mStarted) {
-                if (WaitForSingleObject(mWatchTarget.get(), 0) == WAIT_OBJECT_0) {
-                    mWatchTarget = nullptr;
-
-                    LOG(INFO, "App::RenderThread() The target has exited.");
-                    break;
-                }
-
                 try {
                     winrt::check_hresult(mRender->BeginFrame());
                     {
-                        if (mSharedMutex) {
-                            Result = mSharedMutex->AcquireSync(mAcquireKey, mTimeout);
+                        if (mSurfaceMutex) {
+                            Result = mSurfaceMutex->AcquireSync(mAcquireKey, mTimeout);
                             if (SUCCEEDED(Result)) {
-                                winrt::check_hresult(mRender->Draw(mSharedTexture.get(),
+                                winrt::check_hresult(mRender->Draw(mSurface.get(),
                                     nullptr, false, {}, mRotationMode));
 
-                                (void)mSharedMutex->ReleaseSync(mReleaseKey);
+                                (void)mSurfaceMutex->ReleaseSync(mReleaseKey);
                             }
                         }
                         else {
-                            winrt::check_hresult(mRender->Draw(mSharedTexture.get(),
+                            winrt::check_hresult(mRender->Draw(mSurface.get(),
                                 nullptr, false, {}, mRotationMode));
                         }
                     }
@@ -288,31 +220,22 @@ namespace Mi::Palin
 
     winrt::hresult App::StopPlay()
     {
-        if (mStarted) {
-            mStarted = false;
-
-            if (mRenderThread.joinable()) {
-                mRenderThread.join();
-            }
-
-            mSharedMutex   = nullptr;
-            mSharedTexture = nullptr;
+        mStarted = false;
+        if (mRenderThread.joinable()) {
+            mRenderThread.join();
         }
+
+        mSurfaceMutex = nullptr;
+        mSurface      = nullptr;
+
+        mCaptureForTexture->StopCapture();
+        mCaptureForWindow ->StopCapture();
 
         return S_OK;
     }
 
-    void App::RegisterClosedRevoke(const std::function<void()>& Revoker)
+    void App::RegisterClosedRevoker(const std::function<void()>& Revoker)
     {
         mClosedRevoker = Revoker;
     }
-
-    winrt::com_ptr<IDXGISwapChain1> App::GetSwapChain() const
-    {
-        if (mRender) {
-            return mRender->GetSwapChain();
-        }
-        return { nullptr };
-    }
-
 }
