@@ -190,13 +190,6 @@ namespace Mi::Core
         winrt::hresult Result;
 
         do {
-            winrt::com_ptr<ID3DBlob> ErrorMsgBlob{};
-            winrt::com_ptr<ID3DBlob> VertexShaderBlob{};
-            winrt::com_ptr<ID3DBlob> PixelShaderBlob{};
-
-            winrt::com_ptr<ID3D11DeviceContext> DeviceContext{};
-            mDevice->GetImmediateContext(DeviceContext.put());
-
             // Create the vertex shader
             static constexpr char VERTEX_SHADER[] = R"(
                 struct VS_INPUT
@@ -217,6 +210,8 @@ namespace Mi::Core
                 }
             )";
 
+            winrt::com_ptr<ID3DBlob> ErrorMsgBlob{};
+            winrt::com_ptr<ID3DBlob> VertexShaderBlob{};
             Result = D3DCompile(VERTEX_SHADER, _countof(VERTEX_SHADER), nullptr, nullptr, nullptr,
                 "VS", "vs_4_0", 0, 0, VertexShaderBlob.put(), ErrorMsgBlob.put());
             if (FAILED(Result)) {
@@ -246,6 +241,7 @@ namespace Mi::Core
                 }
             )";
 
+            winrt::com_ptr<ID3DBlob> PixelShaderBlob{};
             Result = D3DCompile(PIXEL_SHADER, _countof(PIXEL_SHADER), nullptr, nullptr, nullptr,
                 "PS", "ps_4_0", 0, 0, PixelShaderBlob.put(), ErrorMsgBlob.put());
             if (FAILED(Result)) {
@@ -270,6 +266,9 @@ namespace Mi::Core
             if (FAILED(Result)) {
                 return Result;
             }
+
+            winrt::com_ptr<ID3D11DeviceContext> DeviceContext{};
+            mDevice->GetImmediateContext(DeviceContext.put());
 
             DeviceContext->PSSetShader(mPixelShader.get(), nullptr, 0);
             DeviceContext->VSSetShader(mVertexShader.get(), nullptr, 0);

@@ -24,9 +24,6 @@ namespace Mi::Core
 
         winrt::hresult Result;
         if (NtHandle) {
-            Result = mDevice->OpenSharedResource(SharedHandle, IID_PPV_ARGS(&mSurface));
-        }
-        else {
             DWORD TargetProcessId = 0;
             GetWindowThreadProcessId(Window, &TargetProcessId);
 
@@ -44,6 +41,9 @@ namespace Mi::Core
                 SharedHandle, ::CloseHandle);
 
             Result = mDevice.as<ID3D11Device1>()->OpenSharedResource1(SharedHandle, IID_PPV_ARGS(&mSurface));
+        }
+        else {
+            Result = mDevice->OpenSharedResource(SharedHandle, IID_PPV_ARGS(&mSurface));
         }
 
         if (FAILED(Result)) {
@@ -89,7 +89,9 @@ namespace Mi::Core
         mSurface = nullptr;
 
         if (mWatchDog.joinable()) {
-            mWatchDog.join();
+            if (mWatchDog.get_id() != std::this_thread::get_id()) {
+                mWatchDog.join();
+            }
         }
 
         return S_OK;
@@ -97,11 +99,19 @@ namespace Mi::Core
 
     winrt::hresult GraphicsCaptureForTexture::GetDirtyRect(RECT& DirtyRect) const
     {
-        return DwmGetWindowAttribute(mWindow, DWMWA_EXTENDED_FRAME_BOUNDS,
-            &DirtyRect, sizeof(DirtyRect));
+        if(!GetClientRect(mWindow, &DirtyRect)) {
+            return HRESULT_FROM_WIN32(GetLastError());
+        }
+
+        if (MapWindowPoints(mWindow, HWND_DESKTOP,
+            reinterpret_cast<POINT*>(&DirtyRect), 2) == 0) {
+            return HRESULT_FROM_WIN32(GetLastError());
+        }
+
+        return S_OK;
     }
 
-    [[nodiscard]] HANDLE GraphicsCaptureForTexture::GetSurfaceHandle() const
+    HANDLE GraphicsCaptureForTexture::GetSurfaceHandle() const
     {
         HANDLE Handle = nullptr;
         if (mSurface) {
@@ -113,17 +123,17 @@ namespace Mi::Core
         return Handle;
     }
 
-    [[nodiscard]] winrt::com_ptr<ID3D11Texture2D> GraphicsCaptureForTexture::GetSurface() const
+    winrt::com_ptr<ID3D11Texture2D> GraphicsCaptureForTexture::GetSurface() const
     {
         return mSurface;
     }
 
-    [[nodiscard]] bool GraphicsCaptureForTexture::IsValid() const
+    bool GraphicsCaptureForTexture::IsValid() const
     {
         return !!mSurface;
     }
 
-    [[nodiscard]] bool GraphicsCaptureForTexture::IsCursorCaptureEnabled() const
+    bool GraphicsCaptureForTexture::IsCursorCaptureEnabled() const
     {
         return false;
     }
@@ -133,7 +143,7 @@ namespace Mi::Core
         UNREFERENCED_PARAMETER(Enabled);
     }
 
-    [[nodiscard]] bool GraphicsCaptureForTexture::IsBorderRequired() const
+    bool GraphicsCaptureForTexture::IsBorderRequired() const
     {
         return false;
     }
@@ -148,6 +158,11 @@ namespace Mi::Core
         mClosedHandler = Handler;
     }
 
+    void GraphicsCaptureForTexture::SubscribeResizeEvent(_In_ const std::function<void(_In_ HWND Window)>& Handler) noexcept
+    {
+        mResizeHandler = Handler;
+    }
+
     winrt::hresult GraphicsCaptureForTexture::WatchDog()
     {
         RECT ClientArea{};
@@ -160,21 +175,32 @@ namespace Mi::Core
                 break;
             }
 
+            if (IsMinimized(mWindow)) {
+                break;
+            }
+
             RECT NewArea{};
             if (!GetClientRect(mWindow, &NewArea)) {
                 break;
             }
 
             // Resize
-            if (ClientArea != NewArea) {
+            if ((ClientArea.right  - ClientArea.left) != (NewArea.right  - NewArea.left) ||
+                (ClientArea.bottom - ClientArea.top ) != (NewArea.bottom - NewArea.top )) {
+
                 OnResize(mWindow, {
                     (NewArea.right  - NewArea.left),
                     (NewArea.bottom - NewArea.top)
                 });
             }
+
+            std::this_thread::yield();
         }
 
-        OnClosed(mWindow);
+        if (IsValid()) {
+            OnClosed(mWindow);
+        }
+
         return S_OK;
     }
 
@@ -182,8 +208,12 @@ namespace Mi::Core
         _In_ HWND Sender,
         _In_ winrt::Windows::Graphics::SizeInt32 Size)
     {
+        UNREFERENCED_PARAMETER(Sender);
         UNREFERENCED_PARAMETER(Size);
-        return OnClosed(Sender);
+
+        if (mResizeHandler) {
+            mResizeHandler(mWindow);
+        }
     }
 
     void GraphicsCaptureForTexture::OnClosed(

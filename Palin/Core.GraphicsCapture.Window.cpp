@@ -30,6 +30,9 @@ namespace Mi::Core
                 winrt::put_abi(mCapture)));
             mCaptureClosedRevoker = mCapture.Closed(winrt::auto_revoke, { this, &GraphicsCaptureForWindow::OnClosed });
 
+            mWindow = Window;
+            mSize   = mCapture.Size();
+
             // FramePool
             const auto DXGIDevice = mDevice.as<IDXGIDevice>();
             mDirect3DDevice = CreateDirect3DDevice(DXGIDevice.get());
@@ -43,8 +46,6 @@ namespace Mi::Core
 
             // Session
             mSession = mFramePool.CreateCaptureSession(mCapture);
-            mWindow  = Window;
-            mSize    = mCapture.Size();
 
             // Surface
             winrt::check_hresult(CreateSharedSurface());
@@ -78,7 +79,7 @@ namespace Mi::Core
             &DirtyRect, sizeof(DirtyRect));
     }
 
-    [[nodiscard]] HANDLE GraphicsCaptureForWindow::GetSurfaceHandle() const
+    HANDLE GraphicsCaptureForWindow::GetSurfaceHandle() const
     {
         HANDLE Handle = nullptr;
         if (mSurface) {
@@ -90,17 +91,17 @@ namespace Mi::Core
         return Handle;
     }
 
-    [[nodiscard]] winrt::com_ptr<ID3D11Texture2D> GraphicsCaptureForWindow::GetSurface() const
+    winrt::com_ptr<ID3D11Texture2D> GraphicsCaptureForWindow::GetSurface() const
     {
         return mSurface;
     }
 
-    [[nodiscard]] bool GraphicsCaptureForWindow::IsValid() const
+    bool GraphicsCaptureForWindow::IsValid() const
     {
         return !!mSurface;
     }
 
-    [[nodiscard]] bool GraphicsCaptureForWindow::IsCursorCaptureEnabled() const
+    bool GraphicsCaptureForWindow::IsCursorCaptureEnabled() const
     {
         if (mSession) {
             if (winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
@@ -123,7 +124,7 @@ namespace Mi::Core
         }
     }
 
-    [[nodiscard]] bool GraphicsCaptureForWindow::IsBorderRequired() const
+    bool GraphicsCaptureForWindow::IsBorderRequired() const
     {
         if (mSession) {
             if (winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
@@ -151,6 +152,11 @@ namespace Mi::Core
         mClosedHandler = Handler;
     }
 
+    void GraphicsCaptureForWindow::SubscribeResizeEvent(_In_ const std::function<void(_In_ HWND Window)>& Handler) noexcept
+    {
+        mResizeHandler = Handler;
+    }
+
     winrt::hresult GraphicsCaptureForWindow::CreateSharedSurface()
     {
         D3D11_TEXTURE2D_DESC Texture2DDesc{};
@@ -172,6 +178,9 @@ namespace Mi::Core
         _In_ const winrt::Windows::Foundation::IInspectable& Object)
     {
         const auto Frame = Sender.TryGetNextFrame();
+        if (Frame == nullptr) {
+            return;
+        }
 
         if (const auto FrameSize = Frame.ContentSize(); FrameSize != mSize) {
             mSize = FrameSize;
@@ -198,6 +207,10 @@ namespace Mi::Core
             mSize);
 
         winrt::check_hresult(CreateSharedSurface());
+
+        if (mResizeHandler) {
+            mResizeHandler(mWindow);
+        }
     }
 
     void GraphicsCaptureForWindow::OnClosed(
@@ -207,5 +220,9 @@ namespace Mi::Core
         UNREFERENCED_PARAMETER(Sender);
 
         StopCapture();
+
+        if (mClosedHandler) {
+            mClosedHandler(mWindow);
+        }
     }
 }

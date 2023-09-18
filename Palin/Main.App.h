@@ -11,14 +11,14 @@ namespace Mi::Palin
     class App final
     {
         winrt::com_ptr<ID3D11Device>    mDevice { nullptr };
-        winrt::com_ptr<ID3D11Texture2D> mSurface{ nullptr };
-        winrt::com_ptr<IDXGIKeyedMutex> mSurfaceMutex{ nullptr };
 
         std::thread mRenderThread;
+        std::atomic_int64_t mResizeCount = 1;
         std::unique_ptr<Core::GraphicsRender> mRender{ nullptr };
         std::unique_ptr<Core::GraphicsCaptureForTexture> mCaptureForTexture;
         std::unique_ptr<Core::GraphicsCaptureForWindow>  mCaptureForWindow;
 
+        bool   mKeyedMutex = false;
         UINT32 mAcquireKey = 1;
         UINT32 mReleaseKey = 0;
         UINT32 mTimeout    = INFINITE;
@@ -51,7 +51,7 @@ namespace Mi::Palin
         void RegisterClosedRevoker(const std::function<void()>& Revoker);
 
     private:
-        winrt::hresult StartRenderThread();
+        winrt::hresult StartRenderThread(Core::IGraphicsCapture* Capture);
     };
 
 }

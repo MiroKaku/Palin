@@ -7,7 +7,7 @@
 
 namespace Mi::Core
 {
-    class GraphicsCaptureForWindow
+    class GraphicsCaptureForWindow final : public IGraphicsCapture
     {
         HWND        mWindow = nullptr;
         DXGI_FORMAT mFormat = DXGI_FORMAT_UNKNOWN;
@@ -25,9 +25,10 @@ namespace Mi::Core
         winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::FrameArrived_revoker mCaptureUpdateRevoker{};
 
         std::function<void(HWND)> mClosedHandler;
+        std::function<void(HWND)> mResizeHandler;
 
     public:
-        ~GraphicsCaptureForWindow() = default;
+        virtual ~GraphicsCaptureForWindow() = default;
 
         GraphicsCaptureForWindow(      GraphicsCaptureForWindow&&) noexcept = default;
         GraphicsCaptureForWindow(const GraphicsCaptureForWindow& ) = delete;
@@ -41,20 +42,22 @@ namespace Mi::Core
         /* method */
         winrt::hresult StartCapture(_In_ HWND Window);
         winrt::hresult StopCapture ();
-        winrt::hresult GetDirtyRect(RECT& DirtyRect) const;
 
-        [[nodiscard]] HANDLE GetSurfaceHandle() const;
-        [[nodiscard]] winrt::com_ptr<ID3D11Texture2D> GetSurface() const;
+        /* interface */
+        HANDLE GetSurfaceHandle() const override;
+        winrt::com_ptr<ID3D11Texture2D> GetSurface() const override;
+        winrt::hresult GetDirtyRect(RECT& DirtyRect) const override;
 
-        [[nodiscard]] bool IsValid() const;
+        bool IsValid() const override;
 
-        [[nodiscard]] bool IsCursorCaptureEnabled() const;
-        void IsCursorCaptureEnabled(_In_ bool Enabled);
+        bool IsCursorCaptureEnabled() const override;
+        void IsCursorCaptureEnabled(_In_ bool Enabled) override;
 
-        [[nodiscard]] bool IsBorderRequired() const;
-        void IsBorderRequired(_In_ bool Enabled);
+        bool IsBorderRequired() const override;
+        void IsBorderRequired(_In_ bool Enabled) override;
 
-        void SubscribeClosedEvent(_In_ const std::function<void(_In_ HWND Window)>& Handler) noexcept;
+        void SubscribeClosedEvent(_In_ const std::function<void(_In_ HWND Window)>& Handler) noexcept override;
+        void SubscribeResizeEvent(_In_ const std::function<void(_In_ HWND Window)>& Handler) noexcept override;
 
     private:
         winrt::hresult CreateSharedSurface();

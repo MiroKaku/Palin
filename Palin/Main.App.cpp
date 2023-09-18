@@ -100,18 +100,10 @@ namespace Mi::Palin
 
     void App::SetKeyedMutex(_In_ bool Enable, _In_ UINT32 AcquireKey, _In_ UINT32 ReleaseKey, _In_ UINT32 Timeout)
     {
+        mKeyedMutex = Enable;
         mAcquireKey = AcquireKey;
         mReleaseKey = ReleaseKey;
         mTimeout    = Timeout;
-
-        if (Enable) {
-            if (mSurface) {
-                (void)mSurface->QueryInterface(IID_PPV_ARGS(&mSurfaceMutex));
-            }
-        }
-        else {
-            mSurfaceMutex = nullptr;
-        }
     }
 
     void App::SetRotationMode(_In_ DXGI_MODE_ROTATION Mode)
@@ -121,76 +113,92 @@ namespace Mi::Palin
 
     winrt::hresult App::StartPlay(_In_ HWND Window)
     {
-        mCaptureForWindow->SubscribeClosedEvent([this](HWND) { if (mClosedRevoker) mClosedRevoker(); });
-
         const auto Result = mCaptureForWindow->StartCapture(Window);
         if (FAILED(Result)) {
             return Result;
         }
-        mSurface = mCaptureForWindow->GetSurface();
 
-        return StartRenderThread();
+        return StartRenderThread(mCaptureForWindow.get());
     }
 
     winrt::hresult App::StartPlay(_In_ HWND Window, _In_ LPCWSTR Name)
     {
-        mCaptureForTexture->SubscribeClosedEvent([this](HWND) { if (mClosedRevoker) mClosedRevoker(); });
-
         const auto Result = mCaptureForTexture->StartCapture(Window, Name);
         if (FAILED(Result)) {
             return Result;
         }
-        mSurface = mCaptureForWindow->GetSurface();
 
-        return StartRenderThread();
+        return StartRenderThread(mCaptureForTexture.get());
     }
 
     winrt::hresult App::StartPlay(_In_ HWND Window, _In_ HANDLE Handle, _In_ bool NtHandle)
     {
-        mCaptureForTexture->SubscribeClosedEvent([this](HWND) { if (mClosedRevoker) mClosedRevoker(); });
-
         const auto Result = mCaptureForTexture->StartCapture(Window, Handle, NtHandle);
         if (FAILED(Result)) {
             return Result;
         }
-        mSurface = mCaptureForWindow->GetSurface();
 
-        return StartRenderThread();
+        return StartRenderThread(mCaptureForTexture.get());
     }
 
-    winrt::hresult App::StartRenderThread()
+    winrt::hresult App::StartRenderThread(Core::IGraphicsCapture* Capture)
     {
-        D3D11_TEXTURE2D_DESC TextureDesc{};
-        mSurface->GetDesc(&TextureDesc);
-        winrt::hresult Result = mRender->Resize(TextureDesc.Width, TextureDesc.Height, DXGI_FORMAT_B8G8R8A8_UNORM);
-        if (FAILED(Result)) {
-            LOG(ERROR, "App::StartPlaying, GraphicsRender::Resize(%ux%u, %d) failed, Result=0x%0*X",
-                TextureDesc.Width, TextureDesc.Height, DXGI_FORMAT_B8G8R8A8_UNORM, 8, Result.value);
-            return Result;
-        }
+        mResizeCount = 1;
 
-        // TODO: Fix WGC
+        Capture->IsBorderRequired(false);
+        Capture->IsCursorCaptureEnabled(false);
+        Capture->SubscribeClosedEvent([this](HWND) { if (mClosedRevoker) mClosedRevoker(); });
+        Capture->SubscribeResizeEvent([this](HWND)
+        {
+            ++mResizeCount;
+        });
 
-        static const auto RenderThread = [this]
+        const auto RenderThread = [this, Capture]
         {
             LOG(INFO, "App::RenderThread() startup.");
 
-            winrt::hresult Result;
             while (mStarted) {
+                winrt::hresult Result;
+
+                const auto& Surface = Capture->GetSurface();
+                if (Surface == nullptr) {
+                    std::this_thread::yield();
+                    continue;
+                }
+
+                winrt::com_ptr<IDXGIKeyedMutex> SurfaceMutex{ nullptr };
+                if (mKeyedMutex) {
+                    (void)Surface->QueryInterface(IID_PPV_ARGS(&SurfaceMutex));
+                }
+
+                if (mResizeCount) {
+                    D3D11_TEXTURE2D_DESC TextureDesc{};
+                    Surface->GetDesc(&TextureDesc);
+
+                    Result = mRender->Resize(TextureDesc.Width, TextureDesc.Height, DXGI_FORMAT_B8G8R8A8_UNORM);
+                    if (FAILED(Result)) {
+                        LOG(ERROR, "App::RenderThread, GraphicsRender::Resize(%ux%u, %d) failed, Result=0x%0*X",
+                            TextureDesc.Width, TextureDesc.Height, DXGI_FORMAT_B8G8R8A8_UNORM, 8, Result.value);
+                        break;
+                    }
+
+                    --mResizeCount; continue;
+                }
+
                 try {
                     winrt::check_hresult(mRender->BeginFrame());
                     {
-                        if (mSurfaceMutex) {
-                            Result = mSurfaceMutex->AcquireSync(mAcquireKey, mTimeout);
+                        if (SurfaceMutex) {
+                            Result = SurfaceMutex->AcquireSync(mAcquireKey, mTimeout);
                             if (SUCCEEDED(Result)) {
-                                winrt::check_hresult(mRender->Draw(mSurface.get(),
+                                winrt::check_hresult(mRender->Draw(Surface.get(),
                                     nullptr, false, {}, mRotationMode));
 
-                                (void)mSurfaceMutex->ReleaseSync(mReleaseKey);
+                                (void)SurfaceMutex->ReleaseSync(mReleaseKey);
                             }
                         }
                         else {
-                            winrt::check_hresult(mRender->Draw(mSurface.get(),
+                            winrt::check_hresult(mRender->Draw(Surface.get(),
                                 nullptr, false, {}, mRotationMode));
                         }
                     }
@@ -206,6 +214,7 @@ namespace Mi::Palin
             LOG(INFO, "App::RenderThread() quit.");
         };
 
+        winrt::hresult Result;
         try {
             mRenderThread = std::thread(RenderThread);
             mStarted      = true;
@@ -225,11 +234,12 @@ namespace Mi::Palin
             mRenderThread.join();
         }
 
-        mSurfaceMutex = nullptr;
-        mSurface      = nullptr;
-
-        mCaptureForTexture->StopCapture();
-        mCaptureForWindow ->StopCapture();
+        if (mCaptureForTexture) {
+            mCaptureForTexture->StopCapture();
+        }
+        if (mCaptureForWindow) {
+            mCaptureForWindow->StopCapture();
+        }
 
         return S_OK;
     }

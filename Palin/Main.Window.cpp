@@ -170,8 +170,11 @@ namespace Mi::Palin
         mApp->RegisterClosedRevoker([this]
         {
             if (mStarted == true) {
-                ComboBox_SetCurSel(mCboWindows, -1);
-                PostMessage(mMainWindow, WM_COMMAND, MAKEWPARAM(0, BN_CLICKED), reinterpret_cast<LPARAM>(mBtnSwitch));
+                mDispatcherQueueController.DispatcherQueue().TryEnqueue([this]
+                {
+                    ComboBox_SetCurSel(mCboWindows, -1);
+                    SendMessage(mMainWindow, WM_COMMAND, MAKEWPARAM(0, BN_CLICKED), reinterpret_cast<LPARAM>(mBtnSwitch));
+                });
             }
         });
 
