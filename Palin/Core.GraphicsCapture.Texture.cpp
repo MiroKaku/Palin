@@ -50,6 +50,15 @@ namespace Mi::Core
             return Result;
         }
 
+        D3D11_TEXTURE2D_DESC TexDesc{};
+        mSurface->GetDesc(&TexDesc);
+
+        LOG(INFO, "GraphicsCaptureForTexture::StartCapture(), target:"
+            "\n\t Width  = %u"
+            "\n\t Height = %u"
+            "\n\t Format = %d",
+            TexDesc.Width, TexDesc.Height, TexDesc.Format);
+
         try {
             mWatchDog = std::thread(&GraphicsCaptureForTexture::WatchDog, this);
         }
